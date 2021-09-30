@@ -28,3 +28,14 @@ Where to get Started?
 
 -	Watch my AnsibleFest presenation to see how all of the code works (will upload to youtube soon)
 -	Take - Fork - Expand! - Please feel free to use this for your own environment!
+
+
+Things worth Noting!
+--------------------
+
+-	Teseted in AAP 2.0
+-	My Environment is a vSphere 7.x Environment with NSX-T 3.1
+-	My NSX Environment is configured in an Active/Standby T0 using BGP to communciate to the rest of my environment (Very important if Ansible node needs to communicate to mgmt network)
+-	All of the Networks used in this environment were NSX-T Segments (can use vSphere PortGroups just saying how i deployed it)
+-	Hardware is Dell VRTX with 2x Dell M630 Blades with 256GB Ram + Dual E5-2673v3 Processors
+-	Storage was DAS (All Flash)
