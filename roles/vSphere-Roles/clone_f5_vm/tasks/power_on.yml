@@ -1,0 +1,13 @@
+---
+
+  - name: Set the state of a virtual machine to Power ON
+    community.vmware.vmware_guest_powerstate:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: False
+      folder: /{{ datacenter_name }}/vm
+      name: "{{ vm_hostname }}{{ova_builds_var.tmpl_name}}-{{item}}"
+      state: powered-on
+    delegate_to: localhost
+    with_sequence: "start=1 count={{ova_builds_var.build_count}} format=%.3d"

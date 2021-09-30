@@ -1,0 +1,22 @@
+---
+ - name: BIG-IQ-License
+   ansible.builtin.uri:
+     url: "https://{{ BIQ_IP }}/mgmt/cm/device/tasks/licensing/pool/member-management"
+     method: POST
+     body_format: json
+     body: "{ 
+       \"address\": \"{{ hostvars[inventory_hostname].ansible_host }}\",
+       \"assignmentType\": \"unmanaged\", 
+       \"command\": \"revoke\",
+       \"licensePoolName\": \"{{ BIQ_PoolName }}\",
+       \"password\": \"{{ f5_pass }}\",
+       \"user\": \"{{ f5_user }}\"
+      }"
+     return_content: yes
+     status_code: [200,202]
+     force_basic_auth: true
+     user: "{{ BIQ_User }}"
+     password: "{{ BIQ_Pass }}"
+     validate_certs: false
+   delegate_to: localhost
+   #register: biq_registered

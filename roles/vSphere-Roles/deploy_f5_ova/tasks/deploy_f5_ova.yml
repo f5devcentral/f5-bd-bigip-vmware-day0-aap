@@ -1,0 +1,20 @@
+---
+
+  - name: Deploy OVA
+    community.vmware.vmware_deploy_ovf:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      datacenter: "{{ datacenter_name }}"
+      cluster: "{{ cluster_name }}"
+      datastore: "{{ datastore }}"
+      resource_pool: "{{resource_pool_name}}"
+      validate_certs: no
+      name: "{{vm_hostname}}{{ ova_builds_var.tmpl_name }}-TMPL"
+      networks: "{u'Management':u'{{ Management_Network }}', u'Internal':u'{{ Internal_Network }}', u'External':u'{{ External_Network }}', u'HA':u'{{ HA_Network }}' }"
+      power_on: no
+      ovf: "{{ ova_builds_var.location }}"
+      deployment_option: "{{ova_builds_var.option}}" 
+      wait_for_ip_address: yes
+    delegate_to: localhost
+

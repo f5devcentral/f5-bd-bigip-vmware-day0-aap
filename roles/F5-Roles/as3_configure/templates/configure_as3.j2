@@ -1,0 +1,50 @@
+{
+	"class": "AS3",
+	"action": "deploy",
+	"persist": true,
+	"declaration": {
+		"class": "ADC",
+		"schemaVersion": "3.0.0",
+		"id": "{{tenant_info_var.name}}",
+		"label": "Configure Web-Apps via AS3",
+		"remark": "HTTPS with Pool",
+		"{{ tenant_info_var.tenant_name }}": {
+			"class": "Tenant",
+			"WebApp-VIP": {
+				"class": "Application",
+				"{{ tenant_info_var.name }}": {
+					"class": "Service_HTTPS",
+					"virtualPort": 443, 
+					"virtualAddresses": [
+						"{{ tenant_info_var.ip }}"
+					],
+					"profileHTTP": "basic", 
+					"pool": "{{ tenant_info_var.name }}_pool",
+          			"redirect80": true,
+					"serverTLS": {
+              			"bigip": "/Common/clientssl"
+          			},
+          			"persistenceMethods": []
+				},
+				"{{ tenant_info_var.name }}_pool": {
+					"class": "Pool",
+          			"minimumMembersActive": 0,
+          			"minimumMonitors": "all",
+					"monitors": [
+						"http"
+					],
+					"members": [
+				   		{% for port in tenant_info_var.service_ports %}{ 
+							"servicePort": {{port}},
+							"serverAddresses": [
+								{% set comma = joiner(",") %}
+								{% for mem in tenant_info_var.pool_members %}
+								{{comma()}} "{{ mem }}"
+								{% endfor %}
+							]}{{ ", " if not loop.last else ""}}
+						{% endfor %}]
+				}
+			}
+		}
+	}
+}

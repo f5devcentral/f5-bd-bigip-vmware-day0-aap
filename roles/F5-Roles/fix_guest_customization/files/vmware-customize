@@ -1,0 +1,558 @@
+#!/bin/bash
+
+# Copyright 2017, F5 Networks, Inc. All rights reserved.
+
+# No part of this software may be reproduced or transmitted in any
+# form or by any means, electronic or mechanical, for any purpose,
+# without express written permission of F5 Networks, Inc.
+
+VC_ME=$(basename $0)
+
+VC_CMD='vmtoolsd'
+VC_CFG='cust.cfg'
+VC_TMSH_CMD='tmsh -a'
+VC_VE_CUST='/shared/vadc/.ve_cust'
+VC_VE_CUST_DONE='/shared/vadc/.ve_cust_done'
+
+vc_log() {
+    [ $# -lt 2 ] && return
+
+    local level=$1
+    shift
+
+    # Log to "/var/log/boot.log"
+    logger -p local7.$level -t $VC_ME $@
+}
+
+# Usage:
+#  -c: called by $VC_CMD daemon to parse and set the custom-spec properties
+#  -o: called by $VC_CMD cmd-line to get and set the OVF properties
+#  -s: indirectly called at last by "-c" or "-o" argument handler to fork a
+#  sub-process to set custom-spec/OVF properties
+
+vc_usage() {
+    vc_log err "Invalid argument(s), please read the usage in this script"
+    exit 1
+}
+
+# Truncate $VC_VE_CUST to re-parse properties from scratch
+vc_cleanup() {
+    >$VC_VE_CUST
+    if [ $? -ne 0 ]; then
+        vc_log err "Failed to truncate '$VC_VE_CUST'"
+        exit 1
+    fi
+}
+
+# Check if required Python modules are installed
+vc_check_python() {
+    for m in 'crypt' 'HTMLParser'; do
+        python -c "import $m" 2>/dev/null
+        if [ $? -ne 0 ]; then
+            vc_log err "Cannot find required Python module '$m'"
+            exit 1
+        fi
+    done
+}
+
+# Escape single-quoted Python command-line string
+vc_escape_python_str() {
+    if [ $# -ne 1 ]; then
+        vc_log err "Failed to get argument of Python string"
+        exit 1
+    fi
+
+    local s=''
+    while IFS='' read -n 1 c; do
+        case $c in
+            \')
+                s="$s\\'"
+                ;;
+            *)
+                s="$s$c"
+                ;;
+        esac
+    done <<< "$1"
+
+    echo -n "$s"
+}
+
+# Escape double-quoted Bash command-line string
+vc_escape_bash_str() {
+    if [ $# -ne 1 ]; then
+        vc_log err "Failed to get argument of Bash string"
+        exit 1
+    fi
+
+    local s=''
+    while IFS='' read -n 1 c; do
+        case $c in
+            $)
+                s="$s\\\$"
+                ;;
+            \")
+                s="$s\\\""
+                ;;
+            *)
+                s="$s$c"
+                ;;
+        esac
+    done <<< "$1"
+
+    echo -n "$s"
+}
+
+# Decode XML entity string
+vc_decode_xml_str() {
+    if [ $# -ne 1 ]; then
+        vc_log err "Failed to get argument of XML entity string"
+        exit 1
+    fi
+
+    local v=$(vc_escape_python_str "$1")
+    local cmd="from HTMLParser import HTMLParser; print HTMLParser().unescape('$v')"
+    v=$(python -c "$cmd" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        vc_log err "Failed to decode XML entity string"
+        exit 1
+    fi
+
+    echo -n "$v"
+}
+
+# Return encrypted (shadow) password
+vc_get_encrypted_pwd() {
+    if [ $# -ne 1 ]; then
+        vc_log err "Failed to get argument of password"
+        exit 1
+    fi
+
+    local v="$1"
+
+    # Match VE (Linux) specific shadow password
+    #  - Special shadow passwords (such as '!!' etc to lock user and unset
+    #  password) are not supported here
+    local pwd_re='^\$(1|2a|2y|5|6)\$.+\$.+'
+    if [[ ! $v =~ $pwd_re ]]; then
+        # Generate SHA512 (strongest for now) shadow password
+        v=$(vc_escape_python_str "$1")
+        local cmd="import crypt; print crypt.crypt('$v', crypt.METHOD_SHA512)"
+        v=$(python -c "$cmd" 2>/dev/null)
+        if [ $? -ne 0 ]; then
+            vc_log err "Failed to create encrypted password"
+            exit 1
+        fi
+    elif [ ${BASH_REMATCH[1]} != '6' ]; then
+        vc_log warning "Require SHA-512 encrypted password, all other algorithms are not recommended"
+    fi
+
+    echo -n "$v"
+}
+
+# Save property KVP to $VC_VE_CUST
+vc_save_kvp() {
+    if [ $# -ne 2 ]; then
+        vc_log err 'Invalid KVP to save'
+        exit 1
+    fi
+
+    local k=$(vc_decode_xml_str "$1")
+    # Skip irrelevant KVP
+    [[ ! $k =~ ^[a-z0-9_]+$ ]] && return
+
+    local v=$(vc_decode_xml_str "$2")
+    [[ $k =~ ^user_[a-z]+_pwd$ ]] && v=$(vc_get_encrypted_pwd "$v")
+    v=$(vc_escape_bash_str "$v")
+
+    echo "$k=\"$v\"" >> $VC_VE_CUST
+}
+
+# Convert IPv4 mask to prefix demanded by TMSH
+vc_mask2pre() {
+    if [ $# -ne 1 ]; then
+        vc_log err "Failed to get argument of IPv4 netmask"
+        exit 1
+    fi
+
+    # Match pattern rather than values
+    local mask_re='^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$'
+    if [[ ! $1 =~ $mask_re ]]; then
+        vc_log err "Invalid IPv4 netmask '$1'"
+        exit 1
+    fi
+
+    local eb=0
+    local pre=0
+
+    for ((i=1; i<=4; ++i)); do
+        if [ ${BASH_REMATCH[$i]} -gt 255 ]; then
+            vc_log err "Invalid IPv4 netmask octet '${BASH_REMATCH[$i]}' in '$1'"
+            exit 1
+        fi
+
+        for ((j=7; j>=0; --j)); do
+            b=$((BASH_REMATCH[i] & (1<<j)))
+            if [ $b -ne 0 ]; then
+                if [ $eb -eq 1 ]; then
+                    vc_log err "Invalid IPv4 netmask '$1' with bit(s) set in subnet"
+                    exit 1
+                fi
+
+                let ++pre
+            else
+                let eb=1
+            fi
+        done
+    done
+
+    echo -n "$pre"
+}
+
+# Blindly start network service
+vc_start_net() {
+    local out
+    out=$(service network start 2>&1)
+    if [ $? -ne 0 ]; then
+        vc_log error "Failed to start network: $out"
+        exit 1
+    else
+        vc_log notice "Started network after VMware customiaztion"
+    fi
+}
+
+# Parse the custom-spec properties and save them in $VC_VE_CUST
+vc_get_cs() {
+    # Sanity check
+    if [ $# -lt 1 ]; then
+        vc_log err "Failed to get argument of custom-spec dir"
+        exit 1
+    fi
+
+    local dir=$1
+    if [ ! -d $dir ]; then
+        vc_log err "'$dir' is not valid dir"
+        exit 1
+    fi
+    if [ ! -r $dir/$VC_CFG ]; then
+        vc_log err "Cannot find '$VC_CFG' in '$dir'"
+        exit 1
+    fi
+
+    # Parse
+    #  - It will fail if host side changes the format
+    # Get the 1st NIC from a list as "NICS = NIC1,NIC2"
+    local nic_re='^NICS *= *([^ ,]+)'
+    # Match KVP separted by " = " or similar ones
+    local val_re=' *= *([^ ]+)'
+
+    declare -A re_keys=([ip]='^IPADDR' [mask]='^NETMASK' [gw]='^GATEWAY' \
+        [ip6]='^IPv6ADDR\|1' [mask6]='^IPv6NETMASK\|1' [gw6]='^IPv6GATEWAY\|1')
+    declare -A re_vals
+
+    local stage=0
+    while read line; do
+        case $stage in
+            0)
+                # Get 1st NIC's name
+                if [[ $line =~ $nic_re ]]; then
+                    nic=${BASH_REMATCH[1]}
+                    let ++stage
+                fi
+                ;;
+            1)
+                # Beginning of 1st-NIC section
+                [[ $line =~ ^\[$nic\] ]] && let ++stage
+                ;;
+            2)
+                # End of 1st-NIC section
+                [[ $line =~ ^(\[|$) ]] && break
+
+                for k in "${!re_keys[@]}"; do
+                    [[ $line =~ ${re_keys[$k]} && $line =~ $val_re ]] && \
+                        re_vals[$k]="${BASH_REMATCH[1]}"
+                done
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done < $dir/$VC_CFG
+
+    # IPv4 addresses are mandatory though IPv6 addresses are set. Missing IPv4
+    # addresses means nothing should be done further
+    if [ "_${re_vals[ip]}" = '_' -o "_${re_vals[mask]}" = '_' ]; then
+        vc_log notice "Didn't find mgmt-IP & netmask in custom-spec, so skip setting"
+        exit 0
+    fi
+
+    # Save ipv6 addresses
+    if [ "_${re_vals[ip6]}" != '_' -a "_${re_vals[mask6]}" != '_' ]; then
+        vc_save_kvp 'net_mgmt_addr6' "${re_vals[ip6]}/${re_vals[mask6]}"
+        [ "_${re_vals[gw6]}" != '_' ] && vc_save_kvp 'net_mgmt_gw6' "${re_vals[gw6]}"
+    fi
+
+    # Save ipv4 addresses
+    if [ "_${re_vals[ip]}" != '_' -a "_${re_vals[mask]}" != '_' ]; then
+        pre=$(vc_mask2pre "${re_vals[mask]}")
+        vc_save_kvp 'net_mgmt_addr' "${re_vals[ip]}/$pre"
+        [ "_${re_vals[gw]}" != '_' ] && vc_save_kvp 'net_mgmt_gw' "${re_vals[gw]}"
+    fi
+
+    vc_start_net
+}
+
+# Parse the OVF properties and save them in $VC_VE_CUST
+vc_get_op() {
+    # Get OVF properties
+    local out
+    out=$($VC_CMD --cmd 'info-get guestinfo.ovfEnv' 2>&1)
+    if [ $? -ne 0 ]; then
+        vc_log err "Failed to get OVF properties: $out"
+        exit 1
+    fi
+
+    # Parse
+    #  - It will fail if host side changes the format
+    local head_re='<PropertySection>'
+    local tail_re='</PropertySection>'
+    # Allow empty value
+    local kvp_re='<Property oe:key="(.+)" oe:value="(.*)"/>'
+
+    local stage=0
+    while read line; do
+        case $stage in
+            0)
+                # Beginning of property section
+                [[ $line =~ $head_re ]] && let ++stage
+                ;;
+            1)
+                # End of property section
+                [[ $line =~ $tail_re ]] && break
+
+                if [[ $line =~ $kvp_re ]]; then
+                    [ ! "_${BASH_REMATCH[2]}" = '_' ] && \
+                        vc_save_kvp "${BASH_REMATCH[1]//./_}" "${BASH_REMATCH[2]}"
+                else
+                    vc_log warning "Invalid property line '$line'"
+                fi
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done <<< "$out"
+}
+
+# Wait for MCPD to be ready
+vc_wait_mcpd() {
+    # Require BIG-IP v13.1.0
+    source '/usr/lib/bigstart/bigip-ready-functions'
+    wait_bigip_ready_config
+}
+
+# Check if ip should be updated
+# Return 0 if it should be, return 1 otherwise
+does_need_to_update_ip() {
+    if [[ $# -ne 1 ]]; then
+        vc_log error "${FUNCNAME[0]} received $# parameters instead of 1: $*"
+        exit 1
+    fi
+    local net_mgmt_addr=$1
+
+    if [[ -z "$net_mgmt_addr" ]]; then
+        return 1
+    fi
+
+    # Since vmware does not provide UI option ipv6 only customization,
+    # ipv4 address 0.0.0.0 is used as a marker that ipv4 should not be customized.
+    # ipv4 only customization is available via vmware UI.
+    if [[ "$net_mgmt_addr" =~ 0\.0\.0\.0\/.[0-9]* ]]; then
+        vc_log notice "$net_mgmt_addr cannot be used as a valid management ip and is ignored."
+        return 1
+    fi
+
+    return 0
+}
+
+# When an IP is customized, dhcp cannot be used for that net.
+# We might drop dhcp only for ipv4, or only for ipv6, or for both.
+set_dhclient_mode() {
+    if [[ $# -ne 2 ]]; then
+        vc_log error "${FUNCNAME[0]} received $# parameters instead of 2: $*"
+        exit 1
+    fi
+    local net_mgmt_addr=$1
+    local net_mgmt_addr6=$2
+
+    local old_state
+    old_state=$(getdb dhclient.mgmt 2>&1)
+    if [[ ! $? ]]; then
+        vc_log error "getdb dhclient.mgmt failed with: $old_state"
+        exit 1
+    fi
+
+    # check if dhcpv4 should be droped
+    local temp_state="$old_state"
+    if does_need_to_update_ip "$net_mgmt_addr"; then
+        if [[ "$old_state" == "enable" ]]; then
+            temp_state="dhcpv6"
+        elif [[ "$old_state" == "dhcpv4" ]]; then
+            temp_state="disable"
+        fi
+    fi
+
+    # check if dhcpv6 should be droped
+    local new_state="$temp_state"
+    if does_need_to_update_ip "$net_mgmt_addr6"; then
+        if [[ "$temp_state" == "enable" ]]; then
+            new_state="dhcpv4"
+        elif [[ "$temp_state" == "dhcpv6" ]]; then
+            new_state="disable"
+        fi
+    fi
+
+    # set new state
+    if [[ "$old_state" != "$new_state" ]]; then
+        local out
+        out=$(setdb dhclient.mgmt "$new_state" 2>&1)
+        if [[ $? -eq 0 ]]; then
+            vc_log notice "Changed setting of management interface from $old_state to $new_state"
+        else
+            vc_log error "Failed to set management interface to $new_state : $out"
+            exit 1
+        fi
+    fi
+}
+
+# Set the management address (IP/prefix) and default gateway
+vc_set_mgmt_addr() {
+    if [[ $# -ne 2 ]]; then
+        vc_log error "${FUNCNAME[0]} received $# parameters instead of 2: $*"
+        exit 1
+    fi
+    local net_mgmt_addr=$1
+    local net_mgmt_gw=$2
+    if ! does_need_to_update_ip "$net_mgmt_addr"; then
+        return
+    fi
+
+    local out
+    # Set management address
+    out=$($VC_TMSH_CMD delete sys management-ip "$net_mgmt_addr" 2>/dev/null)
+    out=$($VC_TMSH_CMD create sys management-ip "$net_mgmt_addr" \
+        description customized-by-vmware 2>&1)
+    if [ $? -ne 0 ]; then
+        vc_log warning "Failed to set management address '$net_mgmt_addr': $out"
+        exit 1
+    else
+        vc_log notice "Set management address to '$net_mgmt_addr'"
+    fi
+
+    # Set management route if any
+    if [ "_$net_mgmt_gw" != '_' ]; then
+        # Determine gateway address family: IPv4 or IPv6
+        local name='default'
+        [[ $net_mgmt_gw =~ : ]] && name='default-inet6'
+
+        out=$($VC_TMSH_CMD delete sys management-route "$name" 2>/dev/null)
+        out=$($VC_TMSH_CMD create sys management-route "$name" \
+            gateway "$net_mgmt_gw" description customized-by-vmware 2>&1)
+        if [ $? -ne 0 ]; then
+            vc_log warning "Failed to set management route '$net_mgmt_gw': $out"
+            exit 1
+        else
+            vc_log notice "Set management route to '$net_mgmt_gw'"
+        fi
+    fi
+}
+
+# Set shadow root password
+vc_set_root_passwd() {
+    [ "_$user_root_pwd" = '_' ] && return
+
+    # Set root password with "usermod" since there's no cmd-line property to
+    # set it with TMSH
+    local out
+    out=$(usermod -p "$user_root_pwd" root 2>&1)
+    if [ $? -ne 0 ]; then
+        vc_log err "Failed to set root password: $out"
+        exit 1
+    else
+        vc_log notice "Set root password"
+    fi
+}
+
+# Set encrypted admin password
+vc_set_admin_passwd() {
+    [ "_$user_admin_pwd" = '_' ] && return
+
+    local out
+    out=$($VC_TMSH_CMD modify auth user admin encrypted-password "$user_admin_pwd" 2>&1)
+    if [ $? -ne 0 ]; then
+        vc_log err "Failed to set admin password: $out"
+        exit 1
+    else
+        vc_log notice "Set admin password"
+    fi
+}
+
+# Save in-memory config to disk
+vc_save_config() {
+    local out
+    out=$($VC_TMSH_CMD save sys config 2>&1)
+    if [ $? -ne 0 ]; then
+        vc_log error "Failed to save sys config: $out"
+        exit 1
+    else
+        vc_log notice "Saved sys config for VMware customization properties"
+    fi
+}
+
+# Set KVPs read from $VC_VE_CUST with TMSH cmd-lines
+vc_set() {
+    [ ! -s $VC_VE_CUST ] && exit 0
+    source $VC_VE_CUST
+
+    vc_wait_mcpd
+
+    set_dhclient_mode "$net_mgmt_addr" "$net_mgmt_addr6"
+    vc_set_mgmt_addr "$net_mgmt_addr" "$net_mgmt_gw"
+    vc_set_mgmt_addr "$net_mgmt_addr6" "$net_mgmt_gw6"
+    vc_set_root_passwd
+    vc_set_admin_passwd
+
+    vc_save_config
+
+    # If everything succeeds, create $VC_VE_CUST_DONE to avoid reentrant
+    touch $VC_VE_CUST_DONE 2>&1
+}
+
+[ $# -lt 1 ] && vc_usage
+vc_check_python
+
+arg=$1
+shift
+
+# Do nothing if $VC_VE_CUST_DONE exists
+[ -f $VC_VE_CUST_DONE ] && exit 0
+
+case $arg in
+    -c)
+        vc_cleanup
+        vc_get_cs $@
+        nohup $0 -s &>/dev/null &
+        ;;
+    -o)
+        vc_cleanup
+        vc_get_op
+        nohup $0 -s &>/dev/null &
+        ;;
+    -s)
+        vc_set
+        ;;
+    *)
+        vc_usage
+        ;;
+esac
+
+exit 0

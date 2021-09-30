@@ -1,0 +1,28 @@
+---
+
+###AD_Environment
+my_domain_admin: "domain\\demouser"
+my_domain_password: "SuperSecretPass"
+my_domain: "domain.local"
+
+###F5_ENV
+#BIG-IP
+f5_user: admin
+f5_pass: "SuperSecretPass"
+f5_admin_port: 443
+
+#BIG-IQ
+BIQ_IP: "10.192.1.237"
+BIQ_PoolName: "F5-License"
+BIQ_Pass: "SuperSecretPass"
+BIQ_User: "admin"
+
+###vSphere_ENV
+vcenter_hostname: "vcenter.domain.local"
+vcenter_username: "demouser@domain.local"
+vcenter_password: "SuperSecretPass"
+vcenter_validate_certs: no
+datacenter_name: "My-DataCenter"
+cluster_name: "My-Cluster"
+datastore: "My-Storage"
+dvs_switch_name: "My-VDS"

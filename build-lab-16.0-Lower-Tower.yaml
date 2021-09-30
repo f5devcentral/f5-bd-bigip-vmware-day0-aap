@@ -1,0 +1,63 @@
+---
+#This Code was meant for any 16.0 builds and lower as they need a Guest Customization Fix to work correctly.
+#Deploy OVA
+- hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - /awx/vault/vault.yml
+    - /awx/vault/deployment.yml
+  roles:
+    - roles/F5-Roles/date_time
+    - roles/vSphere-Roles/create_resource_pool
+    - roles/vSphere-Roles/deploy_f5_ova
+    - roles/vSphere-Roles/create_dyn_group_ova
+
+# Fix OVA with Guest Customization Spec
+- hosts: ova_hosts
+  gather_facts: false
+  become: yes
+  vars_files:
+    - /awx/vault/vault.yml
+    - /awx/vault/deployment.yml
+  roles:
+   - roles/F5-Roles/wait_for_bigip_startup
+   - roles/F5-Roles/reset_passwords
+   - roles/F5-Roles/fix_guest_customization
+
+# Build F5 VMs
+- hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - /awx/vault/vault.yml
+    - /awx/vault/deployment.yml
+  roles:
+    - roles/vSphere-Roles/prep_f5_linked_clone
+    - roles/vSphere-Roles/clone_f5_vm
+    - roles/vSphere-Roles/vmware_tools_wait
+    - roles/vSphere-Roles/create_dyn_group_f5_vms
+
+- hosts: dynamic_f5_vms
+  connection: local
+  gather_facts: false
+  vars_files:
+    - /awx/vault/vault.yml
+    - /awx/vault/deployment.yml
+  roles:
+    - roles/F5-Roles/wait_for_bigip_startup
+    - roles/F5-Roles/install_as3
+    - roles/F5-Roles/install_do
+    - roles/F5-Roles/restart_services_check
+    - roles/F5-Roles/do_configure
+    - roles/F5-Roles/as3_configure
+
+# End-Time
+- hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - /awx/vault/vault.yml
+    - /awx/vault/deployment.yml
+  roles:
+    - roles/F5-Roles/date_time

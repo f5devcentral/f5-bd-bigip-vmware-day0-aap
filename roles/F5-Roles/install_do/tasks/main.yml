@@ -1,0 +1,48 @@
+---
+# tasks insttall Declaritive Onboarding Latest
+
+ - name: Get latest DO RPM name
+   ansible.builtin.shell: curl -s -D - {{do_uri}} | grep -E noarch.rpm | head -1 | cut -d "/" -f 7 | cut -d "=" -f 1 |  cut -d "\"" -f 1
+   register: do_output
+   run_once: true
+
+ - ansible.builtin.set_fact:
+    do_release: "{{do_output.stdout_lines[0]}}"
+   run_once: true
+
+ - name: Get latest DO RPM version
+   ansible.builtin.shell: curl -s -D - {{do_uri}} | grep -E noarch.rpm | head -1 | cut -d "/" -f 6 
+   register: do_output
+   run_once: true
+
+ - ansible.builtin.set_fact:
+    do_release_tag: "{{do_output.stdout_lines[0]}}"
+   run_once: true
+
+ - name: Grab DO RPM from github
+   ansible.builtin.get_url:
+    url: "{{do_uri}}/download/{{do_release_tag}}/{{do_release}}?raw=true"
+    dest: "~/"
+    validate_certs: false
+   run_once: true
+   register: file_get
+   retries: 10
+   until: file_get is not failed
+
+ - name: Grab the DO version from the home directory
+   ansible.builtin.shell: ls -Art ~/f5-declarative-onboarding-*.rpm | tail -n 1 | rev | cut -d/ -f 1 | rev
+   register: ls_output
+   run_once: true
+
+ - ansible.builtin.set_fact:
+    do_rpm: "{{ls_output.stdout}}"
+   run_once: true
+
+ - name: Install DO
+   f5networks.f5_modules.bigip_lx_package:
+    package: "~/{{do_rpm}}"
+    provider: "{{ provider }}"
+   register: install_do
+   delegate_to: localhost
+   retries: 10
+   until: install_do is not failed

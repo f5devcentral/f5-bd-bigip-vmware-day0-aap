@@ -1,0 +1,5 @@
+---
+# tasks file for Role
+
+ - name: Fix-Guest-Customization
+   include: fix_guest_customization.yml

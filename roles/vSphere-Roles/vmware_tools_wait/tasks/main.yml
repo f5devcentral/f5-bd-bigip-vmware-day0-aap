@@ -1,0 +1,11 @@
+---
+# tasks file for Create-VM
+
+ - name: Wait on VMware Guest Tools
+   include: vmware_tools_wait.yml
+   with_items: "{{f5_ova_builds}}"
+   loop_control:
+     loop_var: ova_builds_var
+
+#  - pause:
+#      minutes: "{{ waiting_period }}"

@@ -1,0 +1,32 @@
+---
+# Get F5 VMs
+- hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - /awx/vault/vault.yml
+    - /awx/vault/deployment.yml
+  roles:
+    - roles/vSphere-Roles/destroy_dyn_group_f5_vms
+
+# # Unlicense F5 VMs
+- hosts: dynamic_f5_vms
+  connection: local
+  gather_facts: true
+  vars_files:
+    - /awx/vault/vault.yml
+    - /awx/vault/deployment.yml
+  roles:
+    - roles/F5-Roles/bigiq_unlicense
+
+# Destroy F5 VMs
+- hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - /awx/vault/vault.yml
+    - /awx/vault/deployment.yml
+  roles:
+    - roles/vSphere-Roles/destroy_f5_vms
+    - roles/vSphere-Roles/destroy_f5_master_vms
+    - roles/vSphere-Roles/destroy_resource_pool

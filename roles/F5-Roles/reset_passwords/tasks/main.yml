@@ -1,0 +1,34 @@
+---
+
+- name: After reset, configure the expired admin password
+  uri:
+    url: "https://{{ ansible_host }}/mgmt/shared/authz/users/admin"
+    method: PATCH
+    body: '{"oldPassword":"admin","password":"{{ f5_pass }}"}'
+    body_format: json
+    validate_certs: no
+    force_basic_auth: yes
+    user: admin
+    password: admin
+    headers:
+        Content-Type: "application/json"
+  ignore_errors: yes
+  delegate_to: localhost
+
+- name: Last part of config reset - configure the root password
+  bigip_user:
+    provider:
+      server: "{{ ansible_host }}"
+      user: "{{f5_user}}"
+      password: "{{f5_pass}}"
+      validate_certs: no
+    full_name: root
+    username_credential: root
+    password_credential: "{{f5_pass}}"
+    update_password: always
+  register: passwd_change_status
+  until: passwd_change_status is success
+  retries: 10
+  delay: 10
+  delegate_to: localhost
+  no_log: true

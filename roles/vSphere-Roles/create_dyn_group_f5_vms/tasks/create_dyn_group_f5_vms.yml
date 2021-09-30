@@ -1,0 +1,42 @@
+---
+ 
+  - name: MGMT IP Block Split
+    set_fact: 
+      ip_subnet: "{{ova_builds_var.mgmt_ip_block.split('.')[0]}}.{{ova_builds_var.mgmt_ip_block.split('.')[1]}}.{{ova_builds_var.mgmt_ip_block.split('.')[2]}}"
+      ip_last_octet: "{{ova_builds_var.mgmt_ip_block.split('.')[3]}}"
+
+  - name: Get-VM-Facts
+    community.vmware.vmware_guest_info:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      datacenter: "{{ datacenter_name }}"
+      validate_certs: no
+      name: "{{ vm_hostname }}{{ova_builds_var.tmpl_name}}-{{item}}"
+    register: info
+    with_sequence: "start=1 count={{ova_builds_var.build_count}} format=%.3d"
+    retries: 20
+    delay: 30
+    until:
+    - info.instance.hw_eth0.ipaddresses[0] is not none and info.instance.ipv4 is not none
+    - ( ova_builds_var.mgmt_ip_block[:-1] + item[-1:]|string ) in info.instance.hw_eth0.ipaddresses[0] or ( ova_builds_var.mgmt_ip_block[:-1] + item[-1:]|string) in info.instance.ipv4
+
+  - name: Add VMs to dynamic dynamic_f5_vms Group (v14+)
+    add_host:
+      hostname="{{ info.results[item|int].instance.hw_name}}"
+      ansible_host="{{ info.results[item|int].instance.hw_eth0.ipaddresses[0] }}"
+      ansible_user="root"
+      ansible_password="{{f5_pass}}"
+      groups=dynamic_f5_vms
+    when: info.results[item|int].instance.hw_eth0.ipaddresses[0] is defined
+    with_sequence: "start=0 count={{ova_builds_var.build_count}}"
+
+  - name: Add VMs to dynamic dynamic_f5_vms Group (v12 & v13)
+    add_host:
+      hostname="{{info.results[item|int].instance.hw_name}}"
+      ansible_host="{{info.results[item|int].instance.ipv4}}"
+      ansible_user="root"
+      ansible_password="{{f5_pass}}"
+      groups=dynamic_f5_vms
+    when: info.results[item|int].instance.hw_eth0.ipaddresses[0] is not defined
+    with_sequence: "start=0 count={{ova_builds_var.build_count}}"

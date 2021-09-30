@@ -1,0 +1,8 @@
+---
+# tasks install Declaritive Onboarding Latest
+  
+ - name: Wait for BIG-IP to be ready, don't start checking for 30 seconds
+   f5networks.f5_modules.bigip_wait:
+     delay: 30
+     provider: "{{provider}}"
+   delegate_to: localhost

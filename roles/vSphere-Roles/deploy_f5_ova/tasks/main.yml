@@ -1,0 +1,9 @@
+---
+# tasks file for Create-VM
+
+ - name: Provision VM from Template 
+   include: deploy_f5_ova.yml
+   with_items: "{{f5_ova_builds}}"
+   loop_control:
+     loop_var: ova_builds_var
+

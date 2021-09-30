@@ -1,0 +1,16 @@
+---
+# tasks file for Create-Resource-Pool
+
+  - name: Add Resource Pool to vCenter
+    vmware_resource_pool:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: "{{ vcenter_validate_certs }}"
+      datacenter: "{{ datacenter_name }}"
+      cluster: "{{ cluster_name }}"
+      resource_pool: "{{resource_pool_name}}"
+      state: present
+    delegate_to: localhost
+
+

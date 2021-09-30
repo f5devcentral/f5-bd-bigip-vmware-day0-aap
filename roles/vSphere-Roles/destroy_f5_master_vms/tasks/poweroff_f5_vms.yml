@@ -1,0 +1,12 @@
+---
+  - name: Powering Off (Forced) Master Templates (if on)
+    vmware_guest:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: False
+      name: "{{ vm_hostname }}{{ ova_builds_var.tmpl_name }}-TMPL"
+      state: poweredoff
+      force: yes
+    delegate_to: localhost
+    ignore_errors: true

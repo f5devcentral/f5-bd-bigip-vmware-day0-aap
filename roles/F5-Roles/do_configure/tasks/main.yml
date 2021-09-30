@@ -1,0 +1,10 @@
+---
+
+  - name: Disable DHCP
+    include: disable_dhcp.yml
+
+  - name: Configure DO on Primary Server
+    include: do_configure.yml
+    
+    
+

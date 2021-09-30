@@ -1,0 +1,30 @@
+---
+ - name: Wait for BIG-IP to be ready
+   f5networks.f5_modules.bigip_wait:
+     delay: 5
+     provider: "{{provider}}"
+   delegate_to: localhost
+
+ - name: Get Failover State - Module
+   bigip_command:
+     commands: show sys failover
+     provider: "{{ provider }}"
+   register: f5_info
+
+ - name: Configure F5 with AS3 on Active Node
+   ansible.builtin.uri:
+     url: "https://{{ ansible_host }}:{{f5_admin_port}}/mgmt/shared/appsvcs/declare"
+     method: POST
+     body: "{{ lookup('template','configure_as3.j2', split_lines=False) }}"
+     status_code: 200, 202
+     timeout: 300
+     body_format: json
+     force_basic_auth: true
+     user: "{{ f5_user }}"
+     password: "{{ f5_pass }}"
+     validate_certs: false
+   delegate_to: localhost
+   when: 
+   - f5_info.stdout[0].split()[1] |lower == "active"
+   - tenant_info_var.tenant_name in inventory_hostname
+   register: as3_result

@@ -1,0 +1,8 @@
+---
+# tasks file for Create-VM
+
+ - name: Snapshot Master Templates
+   include: take_snap.yml
+   with_items: "{{f5_ova_builds}}"
+   loop_control:
+     loop_var: ova_builds_var

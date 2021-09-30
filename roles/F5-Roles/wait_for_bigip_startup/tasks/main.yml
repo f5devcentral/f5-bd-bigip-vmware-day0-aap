@@ -1,0 +1,17 @@
+---
+
+ - name: Wait for BIG-IP start-up to be ready
+   uri:
+     url: "https://{{ansible_host}}/tmui/login.jsp"
+     return_content: true
+     status_code: 200
+     validate_certs: false
+   register: bip_output
+   until: "'username' in bip_output.content"
+   retries: 40
+   delay: 15
+   delegate_to: localhost
+
+   #need timing to find out if ova is fully fired up
+#  - pause:
+#      minutes: "{{ waiting_period }}"

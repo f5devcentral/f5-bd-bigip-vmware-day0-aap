@@ -1,0 +1,35 @@
+---
+
+  - name: Get-VM-Facts
+    community.vmware.vmware_guest_info:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      datacenter: "{{ datacenter_name }}"
+      validate_certs: no
+      name: "{{vm_hostname}}{{ ova_builds_var.tmpl_name }}-TMPL"
+    register: info
+    retries: 10
+    delay: 30
+    until: 
+    - info.instance.hw_eth0.ipaddresses[0] is not none and info.instance.ipv4 is not none
+    delegate_to: localhost
+
+
+  - name: Add VMs to dynamic ova_hosts Group (v14+)
+    add_host:
+      hostname="{{info.instance.hw_name}}"
+      ansible_host="{{info.instance.hw_eth0.ipaddresses[0]}}"
+      ansible_user="root"
+      ansible_password="{{f5_pass}}"
+      groups=ova_hosts
+    when: info.instance.hw_eth0.ipaddresses[0] is defined
+
+  - name: Add VMs to dynamic ova_hosts Group (v12 & v13)
+    add_host:
+      hostname="{{info.instance.hw_name}}"
+      ansible_host="{{info.instance.ipv4}}"
+      ansible_user="root"
+      ansible_password="{{f5_pass}}"
+      groups=ova_hosts
+    when: info.instance.hw_eth0.ipaddresses[0] is not defined

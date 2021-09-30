@@ -1,0 +1,28 @@
+---
+  - name: Remove all snapshots of a VM
+    community.vmware.vmware_guest_snapshot:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      datacenter: "{{ datacenter_name }}"
+      validate_certs: no
+      folder: "/{{ datacenter_name }}/vm/"
+      name: "{{vm_hostname}}{{ ova_builds_var.tmpl_name }}-TMPL"
+      state: remove_all
+    delegate_to: localhost
+    ignore_errors: yes
+
+  - name: Create a snapshot for Linked Clone Deployment if doesnt exist
+    community.vmware.vmware_guest_snapshot:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      datacenter: "{{ datacenter_name }}"
+      folder: /{{ datacenter_name }}/vm
+      name: "{{vm_hostname}}{{ ova_builds_var.tmpl_name }}-TMPL"
+      state: present
+      snapshot_name: "{{f5_snapshot_name}}"
+      description: "{{f5_snapshot_desc}}"
+      validate_certs: no
+    delegate_to: localhost
+

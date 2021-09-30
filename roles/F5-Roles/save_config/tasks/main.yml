@@ -1,0 +1,17 @@
+---
+
+ - name: Wait for BIG-IP to boot up completely
+   wait_for:
+     host: "{{ ansible_host }}"
+     port: "{{ f5_admin_port }}"
+     state: present
+
+ - name: Save the running configuration of the BIG-IP
+   bigip_config:
+     save: yes
+     provider:
+       server: "{{ ansible_host }}"
+       user: "{{f5_user}}"
+       password: "{{f5_pass}}"
+       server_port: "{{f5_admin_port}}"
+       validate_certs: "no"

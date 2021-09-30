@@ -1,0 +1,46 @@
+---
+
+- name: Wait for BIG-IP to be ready
+  f5networks.f5_modules.bigip_wait:
+    delay: 5
+    provider: "{{provider}}"
+  delegate_to: localhost
+
+- name: Test if DO is working Correctly
+  ansible.builtin.uri:
+    url: "https://{{ ansible_host }}:{{f5_admin_port}}/mgmt/shared/declarative-onboarding/declare"
+    method: GET
+    status_code: [200, 202, 404, 500]
+    body_format: json
+    force_basic_auth: true
+    user: "{{ f5_user }}"
+    password: "{{ f5_pass }}"
+    validate_certs: false
+  delegate_to: localhost
+  register: do_result
+
+- name: Test if AS3 is working Correctly
+  ansible.builtin.uri:
+    url: "https://{{ ansible_host }}:{{f5_admin_port}}/mgmt/shared/appsvcs/declare"
+    method: GET
+    status_code: [200, 202, 204, 404, 500]
+    body_format: json
+    force_basic_auth: true
+    user: "{{ f5_user }}"
+    password: "{{ f5_pass }}"
+    validate_certs: false
+  delegate_to: localhost
+  register: as3_result
+
+- name: Restart BIG-IP Services if not responding to AS3 or DO
+  f5networks.f5_modules.bigip_command:
+    commands:
+      - restart sys service restnoded
+      - restart sys service restjavad
+    provider: "{{ provider }}"
+  when: do_result.json.code == 404 or as3_result.status == 404
+  ignore_errors: true
+  delegate_to: localhost
+
+- pause:
+    seconds: 30

@@ -1,0 +1,41 @@
+---
+
+  - name: Clone the template (BIG-IP)
+    vmware_guest:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: False
+      name: "{{ vm_hostname }}{{ova_builds_var.tmpl_name}}-{{item}}"
+      template: "{{vm_hostname}}{{ ova_builds_var.tmpl_name }}-TMPL"
+      datacenter: "{{ datacenter_name }}"
+      folder: /{{ datacenter_name }}/vm
+      cluster: "{{ cluster_name }}"
+      resource_pool: "{{ resource_pool_name }}"
+      datastore: "{{ datastore }}"
+      linked_clone: "{{ is_linked_clone }}"
+      snapshot_src: "{{ f5_snapshot_name }}"
+      state: poweredoff
+      wait_for_ip_address: no
+    delegate_to: localhost
+    with_sequence: "start=1 count={{ova_builds_var.build_count}} format=%.3d"
+
+  - name: Change Networks (BIG-IP)
+    vmware_guest:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      datacenter: "{{ datacenter_name }}"
+      folder: /{{ datacenter_name }}/vm
+      cluster: "{{ cluster_name }}"
+      resource_pool: "{{ resource_pool_name }}"
+      validate_certs: False
+      name: "{{ vm_hostname }}{{ova_builds_var.tmpl_name}}-{{item}}"
+      networks:
+      - name: "{{ Management_Network }}"
+      - name: "{{ Internal_Network }}"
+      - name: "{{ External_Network }}"
+      - name: "{{ HA_Network }}"
+    delegate_to: localhost
+    with_sequence: "start=1 count={{ova_builds_var.build_count}} format=%.3d"
+

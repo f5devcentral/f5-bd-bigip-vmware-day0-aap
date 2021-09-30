@@ -1,0 +1,14 @@
+---
+# tasks file for Destroy-VM
+
+ - name: Power Off Force VMs
+   include: poweroff_f5_vms.yml
+   with_items: "{{f5_ova_builds}}"
+   loop_control:
+     loop_var: ova_builds_var
+
+ - name: Destroy Provisioned VMs 
+   include: destroy_f5_vms.yml
+   with_items: "{{f5_ova_builds}}"
+   loop_control:
+     loop_var: ova_builds_var

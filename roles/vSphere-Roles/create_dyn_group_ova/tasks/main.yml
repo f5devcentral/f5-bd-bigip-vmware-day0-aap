@@ -1,0 +1,6 @@
+---
+ - name: Gather Template Information store in dynamic group ova_hosts
+   include: get_vm_info.yml
+   with_items: "{{f5_ova_builds}}"
+   loop_control:
+     loop_var: ova_builds_var

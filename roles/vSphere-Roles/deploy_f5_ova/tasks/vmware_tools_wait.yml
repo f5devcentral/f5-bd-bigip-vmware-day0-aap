@@ -1,0 +1,12 @@
+---
+
+  - name: Wait for VMware tools to become available
+    community.vmware.vmware_guest_tools_wait:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: False
+      folder: /{{ datacenter_name }}/vm
+      name: "{{vm_hostname}}{{ ova_builds_var.tmpl_name }}-TMPL"
+    delegate_to: localhost
+    register: facts

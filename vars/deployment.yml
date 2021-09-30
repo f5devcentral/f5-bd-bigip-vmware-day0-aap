@@ -1,0 +1,55 @@
+#Deployment information 
+
+#F5 Info
+# Select Modules deployed in Declaritive Onboarding Instance
+f5_modules:
+  - APM
+  - LTM
+dns_name_servers:
+- 192.192.192.192
+- 192.192.192.193
+dns_name_search:
+- localdomain
+- mydomain.local
+ntp_servers:
+- 0.pool.ntp.org
+- 1.pool.ntp.org
+- 2.pool.ntp.org
+domain_fqdn: "mydomain.local"
+
+#Self IPs
+self_internal_sn: "199.199.199.0/24"
+self_external_sn: "196.196.196.0/24"
+self_ha_sn: "197.197.197.0/24"
+float_num: "9" # this is the number of the floating IP address
+route_gateway: "199.199.199.1"
+
+#Networking-vSphere
+Management_Network: "F5-MGMT-Network"
+Internal_Network: "F5-App-Network-1"
+External_Network: "F5-DMZ-Network"
+HA_Network: "F5-HA-Network"
+
+#VM Creation
+vm_hostname: "Lab-BIP-"
+resource_pool_name: "Lab-BIP"
+  # is_linked_clone when true (more for demo) when false (more for production)
+is_linked_clone: yes
+waiting_period: 2
+f5_snapshot_name: "Snap"
+f5_snapshot_desc: "Linked Clone Snap"
+
+#OVAs
+f5_ova_builds:
+#- {location: "/awx/file/BIGIP-14.1.3-0.0.7.ALL-vmware.ova", option: "quadcpu", build_count: 2, tmpl_name: "BIGIP-14.1.3", mgmt_ip_block: "195.195.195.40", mgmt_ip_subnet_prefix: "24", mgmt_gw: "195.195.195.1"}
+- {location: "/awx/file/BIGIP-16.1.0-0.0.19.ALL-vmware.ova", option: "quadcpu", build_count: 2, tmpl_name: "BIGIP-16.1.0", mgmt_ip_block: "195.195.195.20", mgmt_ip_subnet_prefix: "24", mgmt_gw: "195.195.195.1"}
+
+#AS3/DO
+#URIs
+do_uri: "https://github.com/F5Networks/f5-declarative-onboarding/releases"
+as3_uri: "https://github.com/F5Networks/f5-appsvcs-extension/releases"
+
+#Tenant Data
+tenant_info:
+- {tenant_name: "BIGIP-15.1.2", name: "T1-JuiceShop", ip: "196.196.196.120", port: "443", pool_members: ["199.199.199.153", "199.199.199.154"], service_ports: [3000, 3001, 3002, 3003, 3004]}
+- {tenant_name: "BIGIP-16.0.1", name: "T2-JuiceShop", ip: "196.196.196.130", port: "443", pool_members: ["199.199.199.153", "199.199.199.154"], service_ports: [3000, 3001, 3002, 3003, 3004]}

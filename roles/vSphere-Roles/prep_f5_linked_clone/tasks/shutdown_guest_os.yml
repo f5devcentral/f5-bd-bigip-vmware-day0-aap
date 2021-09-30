@@ -1,0 +1,10 @@
+---
+  - name: Shutdown the Template
+    community.vmware.vmware_guest_powerstate:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: False
+      name: "{{vm_hostname}}{{ ova_builds_var.tmpl_name }}-TMPL"
+      state: shutdown-guest
+      state_change_timeout: 300

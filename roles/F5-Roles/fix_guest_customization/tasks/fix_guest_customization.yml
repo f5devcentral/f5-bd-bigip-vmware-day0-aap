@@ -1,0 +1,38 @@
+---
+
+  - name: Remove Known_host if exists on DHCP Address
+    ansible.builtin.known_hosts:
+      name: "{{ hostvars[inventory_hostname].ansible_host }}"
+      state: absent
+    delegate_to: localhost 
+
+  - name: Copy Guest Customziation Spec in Master Template
+    ansible.builtin.copy:
+      src: "{{ role_path }}/files/vmware-customize"
+      dest: /etc/vadc-init/vmware-customize
+      owner: root
+      group: root
+      mode: 0755
+
+  - name: Stop RestJavaD to delete appropriate files
+    f5networks.f5_modules.bigip_command:
+      commands: tmsh stop /sys service restjavad
+      provider: "{{provider}}"
+    delegate_to: localhost
+    ignore_errors: true
+
+  - name: Remove file (f5-rest-device-id)
+    ansible.builtin.file:
+      path: /config/f5-rest-device-id
+      state: absent
+
+  - name: Remove file (bigip.license)
+    ansible.builtin.file:
+      path: /config/bigip.license
+      state: absent
+    
+  - name: Remove Files (Prep Master Image)
+    ansible.builtin.shell: "{{item}}"
+    with_items:
+      - rm -f /config/ssh/ssh_host_* 
+      - rm -f /shared/ssh/ssh_host_*
